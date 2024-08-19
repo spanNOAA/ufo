@@ -1,0 +1,8 @@
+# Ignore directories created by rendering process
+build
+_static
+_templates
+*.swp
+test-data-release
+._*
+*~
