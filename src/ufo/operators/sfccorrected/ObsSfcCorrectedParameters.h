@@ -22,7 +22,7 @@ namespace ufo {
 
 /// enum type for surface correction type, and ParameterTraitsHelper for it
 enum class SfcCorrectionType {
-  UKMO, WRFDA, RRFS_GSL, RRFS_GSL_LOCAL
+  UKMO, WRFDA, CONSTANT_LAPSE_RATE, GSL
 };
 struct SfcCorrectionTypeParameterTraitsHelper {
   typedef SfcCorrectionType EnumType;
