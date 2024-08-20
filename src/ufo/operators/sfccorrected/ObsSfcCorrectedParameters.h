@@ -22,7 +22,7 @@ namespace ufo {
 
 /// enum type for surface correction type, and ParameterTraitsHelper for it
 enum class SfcCorrectionType {
-  UKMO, WRFDA, RRFS_GSL
+  UKMO, WRFDA, RRFS_GSL, RRFS_GSL_LOCAL
 };
 struct SfcCorrectionTypeParameterTraitsHelper {
   typedef SfcCorrectionType EnumType;
@@ -30,7 +30,8 @@ struct SfcCorrectionTypeParameterTraitsHelper {
   static constexpr util::NamedEnumerator<SfcCorrectionType> namedValues[] = {
     { SfcCorrectionType::UKMO, "UKMO" },
     { SfcCorrectionType::WRFDA, "WRFDA" },
-    { SfcCorrectionType::RRFS_GSL, "RRFS_GSL" }
+    { SfcCorrectionType::CONSTANT_LAPSE_RATE, "CONSTANT_LAPSE_RATE" },
+    { SfcCorrectionType::GSL, "GSL" }
   };
 };
 
@@ -81,6 +82,12 @@ class ObsSfcCorrectedParameters : public ObsOperatorParametersBase {
 
   /// Note: "station_altitude" default value is "stationElevation"
   oops::Parameter<std::string> ObsHeightName{"station_altitude", "stationElevation", this};
+
+  /// Note: Only relevant if \c SfcCorrectionType is set to CONSTANT_LAPSE_RATE, "lapse_rate" default value is adiabatic lapse rate 9.8 K/km
+  oops::Parameter<float> LapseRateValue{"lapse_rate", 9.8, this};
+
+  /// Note: Only relevant if \c SfcCorrectionType is set to GSL, the size of vector "local_lapse_rate_levels" can only be 2.
+  oops::Parameter<std::vector<int>> LocalLapseRateLevels{"local_lapse_rate_levels", this};
 };
 
 // -----------------------------------------------------------------------------

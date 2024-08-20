@@ -296,7 +296,12 @@ case ("UKMO")
    deallocate(model_t_2000)
 
 !----------------
-case ("RRFS_GSL")
+case ("CONSTANT_LAPSE_RATE")
+!----------------
+! to be implemented
+
+!----------------
+case ("GSL")
 !----------------
 ! to be implemented
 
