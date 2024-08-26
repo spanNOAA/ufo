@@ -86,8 +86,8 @@ class ObsSfcCorrectedParameters : public ObsOperatorParametersBase {
   /// Note: Only relevant if \c SfcCorrectionType is set to CONSTANT_LAPSE_RATE, "lapse_rate" default value is adiabatic lapse rate 9.8 K/km
   oops::Parameter<float> LapseRateValue{"lapse_rate", 9.8, this};
 
-  /// Note: Only relevant if \c SfcCorrectionType is set to GSL, the size of vector "local_lapse_rate_levels" can only be 2.
-  oops::RequiredParameter<std::vector<int>> LocalLapseRateLevels{"local_lapse_rate_levels", this};
+  /// Note: Only relevant if \c SfcCorrectionType is set to GSL.
+  oops::Parameter<int> LocalLapseRateLevels{"local_lapse_rate_levels", 5, this};
 };
 
 // -----------------------------------------------------------------------------
