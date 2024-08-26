@@ -87,7 +87,7 @@ class ObsSfcCorrectedParameters : public ObsOperatorParametersBase {
   oops::Parameter<float> LapseRateValue{"lapse_rate", 9.8, this};
 
   /// Note: Only relevant if \c SfcCorrectionType is set to GSL, the size of vector "local_lapse_rate_levels" can only be 2.
-  oops::Parameter<std::vector<int>> LocalLapseRateLevels{"local_lapse_rate_levels", this};
+  oops::RequiredParameter<std::vector<int>> LocalLapseRateLevels{"local_lapse_rate_levels", this};
 };
 
 // -----------------------------------------------------------------------------
