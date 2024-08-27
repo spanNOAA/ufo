@@ -89,7 +89,7 @@ class ObsSfcCorrectedParameters : public ObsOperatorParametersBase {
   oops::Parameter<float> LapseRateValue{"lapse_rate", 9.8, this};
 
   /// Note: Only relevant if \c SfcCorrectionType is set to GSL and and \c LapseRateOption is set to "LOCAL"
-  oops::Parameter<int> LocalLapseRateLevels{"local_lapse_rate_levels", 5, this};
+  oops::Parameter<int> LocalLapseRateLevels{"local_lapse_rate_level", 5, this};
 };
 
 // -----------------------------------------------------------------------------

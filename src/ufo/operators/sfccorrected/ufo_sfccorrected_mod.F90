@@ -32,7 +32,7 @@ module ufo_sfccorrected_mod
    character(len=MAXVARLEN)     :: station_altitude
    character(len=MAXVARLEN)     :: lapse_rate_option
    real(kind_real)              :: lapse_rate
-   integer                      :: local_lapse_rate_levels
+   integer                      :: local_lapse_rate_level
  contains
    procedure :: setup  => ufo_sfccorrected_setup
    procedure :: simobs => ufo_sfccorrected_simobs
@@ -52,7 +52,7 @@ type(fckit_configuration), intent(in) :: f_conf
 character(len=:), allocatable         :: str_sfc_scheme, str_var_sfc_geomz, str_var_geomz, str_lapse_rate_option
 character(len=:), allocatable         :: str_obs_height
 real(kind_real), allocatable          :: constant_lapse_rate
-integer, allocatable                  :: local_lapse_rate_levels
+integer, allocatable                  :: local_lapse_rate_level
 
 character(max_string)                 :: debug_msg
 
@@ -86,8 +86,8 @@ if (self%da_sfc_scheme.eq."GSL") then
       call f_conf%get_or_die("lapse_rate", constant_lapse_rate)
       self%lapse_rate = constant_lapse_rate
    case ("LOCAL")
-      call f_conf%get_or_die("local_lapse_rate_levels", local_lapse_rate_levels)
-      self%local_lapse_rate_levels = local_lapse_rate_levels
+      call f_conf%get_or_die("local_lapse_rate_level", local_lapse_rate_level)
+      self%local_lapse_rate_level = local_lapse_rate_level
    case default
       write(err_msg,*) "ufo_sfccorrected: lapse_rate_option not recognized"
       call fckit_log%debug(err_msg)
@@ -330,8 +330,8 @@ case ("GSL")
 
    if (self%lapse_rate_option.eq."LOCAL") then
 
-      lr = (model_t%vals(self%local_lapse_rate_levels,:) - model_t%vals(1,:)) / &
-           (model_geomz%vals(self%local_lapse_rate_levels,:) - model_geomz%vals(1,:))
+      lr = (model_t%vals(self%local_lapse_rate_level,:) - model_t%vals(1,:)) / &
+           (model_geomz%vals(self%local_lapse_rate_level,:) - model_geomz%vals(1,:))
 
    else:
 
