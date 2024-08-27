@@ -30,6 +30,7 @@ module ufo_sfccorrected_mod
    type(oops_variables), public :: geovars
    character(len=MAXVARLEN)     :: da_sfc_scheme
    character(len=MAXVARLEN)     :: station_altitude
+   character(len=MAXVARLEN)     :: lapse_rate_option
    real(kind_real)              :: lapse_rate
    integer                      :: local_lapse_rate_levels
  contains
@@ -48,7 +49,7 @@ use fckit_log_module,  only : fckit_log
 implicit none
 class(ufo_sfccorrected), intent(inout)     :: self
 type(fckit_configuration), intent(in) :: f_conf
-character(len=:), allocatable         :: str_sfc_scheme, str_var_sfc_geomz, str_var_geomz
+character(len=:), allocatable         :: str_sfc_scheme, str_var_sfc_geomz, str_var_geomz, str_lapse_rate_option
 character(len=:), allocatable         :: str_obs_height
 real(kind_real), allocatable          :: constant_lapse_rate
 integer, allocatable                  :: local_lapse_rate_levels
@@ -77,14 +78,21 @@ self%da_sfc_scheme = str_sfc_scheme
 call f_conf%get_or_die("station_altitude", str_obs_height)
 self%station_altitude = str_obs_height
 
-if (self%da_sfc_scheme.eq."CONSTANT_LAPSE_RATE") then
-   call f_conf%get_or_die("lapse_rate", constant_lapse_rate)
-   self%lapse_rate = constant_lapse_rate
-endif
-
 if (self%da_sfc_scheme.eq."GSL") then
-   call f_conf%get_or_die("local_lapse_rate_levels", local_lapse_rate_levels)
-   self%local_lapse_rate_levels = local_lapse_rate_levels
+   call f_conf%get_or_die("lapse_rate_option", str_lapse_rate_option)
+   self%lapse_rate_option = str_lapse_rate_option
+   select case (trim(self%lapse_rate_option))
+   case ("CONSTANT")
+      call f_conf%get_or_die("lapse_rate", constant_lapse_rate)
+      self%lapse_rate = constant_lapse_rate
+   case ("LOCAL")
+      call f_conf%get_or_die("local_lapse_rate_levels", local_lapse_rate_levels)
+      self%local_lapse_rate_levels = local_lapse_rate_levels
+   case default
+      write(err_msg,*) "ufo_sfccorrected: lapse_rate_option not recognized"
+      call fckit_log%debug(err_msg)
+      call abor1_ftn(err_msg)
+   end select
 endif
 
 end subroutine ufo_sfccorrected_setup
@@ -313,25 +321,25 @@ case ("UKMO")
    deallocate(model_t_2000)
 
 !----------------
-case ("CONSTANT_LAPSE_RATE")
-!----------------
-
-   model_ts = model_t2m%vals(:)
-
-   call da_int_clr(nobs, missing, cor_tsfc, obs_height, obs_t, model_zs, self%lapse_rate)
-
-!----------------
 case ("GSL")
 !----------------
 
-   allocate(llr(nobs))
-
-   llr = (model_t%vals(self%local_lapse_rate_levels,:) - model_t%vals(1,:)) / &
-         (model_geomz%vals(self%local_lapse_rate_levels,:) - model_geomz%vals(1,:))
-
    model_ts = model_t2m%vals(:)
 
-   call da_int_llr(nobs, missing, cor_tsfc, obs_height, obs_t, model_zs, llr)
+   allocate(lr(nobs))
+
+   if (self%lapse_rate_option.eq."LOCAL") then
+
+      lr = (model_t%vals(self%local_lapse_rate_levels,:) - model_t%vals(1,:)) / &
+           (model_geomz%vals(self%local_lapse_rate_levels,:) - model_geomz%vals(1,:))
+
+   else:
+
+      lr = self%lapse_rate
+
+   endif
+
+   call da_int_lr(nobs, missing, cor_tsfc, obs_height, obs_t, model_zs, lr)
 
 !-----------
 case default
@@ -493,48 +501,7 @@ end subroutine da_int_ukmo
 !!  T_lr  = temperature lapse rate
 !!  T_o2m = obs temp interpolated from station height to model sfc level
 
-subroutine da_int_clr(nobs, missing, cor_tsfc, H_o, T_o, H_m, T_lr)
-implicit none
-integer,                          intent (in)  :: nobs
-real(c_double),                   intent (in)  :: missing
-real(kind_real), dimension(nobs), intent (in)  :: H_o
-real(kind_real), dimension(nobs), intent (in)  :: H_m
-real(kind_real), dimension(nobs), intent (in)  :: T_o
-real(kind_real), intent (in)                   :: T_lr
-real(kind_real), dimension(nobs), intent (out) :: cor_tsfc
-real(kind_real), dimension(nobs)               :: T_o2m
-integer i
-
-! T_o2m : obs temp interpolated to model sfc
-
-! Adjust temp from station height to model sfc based on lapse rate
-! -------------------------------------------------
-where ( H_o /= missing .and. T_o /= missing )
-
-   T_o2m = T_o - T_lr * ( H_m - H_o)
-
-elsewhere
-   !T_o2m = T_m   ! to give zero analysis increment
-   T_o2m = T_o
-end where
-
-   cor_tsfc = T_o2m
-
-end subroutine da_int_clr
-
-! -----------------------------------------------------------
-!> \Conduct terrain height correction for sfc temp
-!!
-!! \Method: Constant Lapse Rate (adiabatic by default)
-!!
-!!  Where:
-!!  H_m   = model sfc height
-!!  H_o   = obs station height
-!!  T_o   = obs temp at station height
-!!  T_lr  = temperature lapse rate
-!!  T_o2m = obs temp interpolated from station height to model sfc level
-
-subroutine da_int_llr(nobs, missing, cor_tsfc, H_o, T_o, H_m, T_lr)
+subroutine da_int_lr(nobs, missing, cor_tsfc, H_o, T_o, H_m, T_lr)
 implicit none
 integer,                          intent (in)  :: nobs
 real(c_double),                   intent (in)  :: missing
@@ -561,7 +528,7 @@ end where
 
    cor_tsfc = T_o2m
 
-end subroutine da_int_llr
+end subroutine da_int_lr
 
 ! ------------------------------------------------------------------------------
 end module ufo_sfccorrected_mod
