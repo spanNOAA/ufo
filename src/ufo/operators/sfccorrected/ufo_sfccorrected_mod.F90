@@ -31,13 +31,13 @@ module ufo_sfccorrected_mod
    character(len=MAXVARLEN)     :: da_sfc_scheme
    character(len=MAXVARLEN)     :: station_altitude
    real(kind_real)              :: lapse_rate
-   integer, allocatable         :: local_lapse_rate_levels
+   integer                      :: local_lapse_rate_levels
  contains
    procedure :: setup  => ufo_sfccorrected_setup
    procedure :: simobs => ufo_sfccorrected_simobs
  end type ufo_sfccorrected
 
- character(len=MAXVARLEN), dimension(5) :: geovars_list = (/ var_ps, var_geomz, var_sfc_geomz, var_ts, var_prs, var_sfc_t2m /)
+ character(len=MAXVARLEN), dimension(6) :: geovars_list = (/ var_ps, var_geomz, var_sfc_geomz, var_ts, var_prs, var_sfc_t2m /)
 
 contains
 
