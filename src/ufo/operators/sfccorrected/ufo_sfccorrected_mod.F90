@@ -114,7 +114,7 @@ real(kind_real)                   :: wf
 integer                           :: wi
 logical                           :: variable_present, variable_present_t, variable_present_q
 real(kind_real), dimension(:), allocatable :: obs_height, obs_t, obs_q, obs_psfc, obs_lat, obs_tv
-real(kind_real), dimension(:), allocatable :: model_ts, model_zs, model_level1, model_p_2000, model_t_2000, model_psfc
+real(kind_real), dimension(:), allocatable :: model_ts, model_zs, model_level1, model_p_2000, model_t_2000, model_psfc, llr
 real(kind_real), dimension(:), allocatable :: H2000_geop
 real(kind_real), dimension(:), allocatable :: avg_tv
 real(kind_real)                            :: model_znew
@@ -318,12 +318,20 @@ case ("CONSTANT_LAPSE_RATE")
 
    model_ts = model_t2m%vals(:)
 
-   call da_int_lr(nobs, missing, cor_tsfc, obs_height, obs_t, model_zs, self%lapse_rate)
+   call da_int_clr(nobs, missing, cor_tsfc, obs_height, obs_t, model_zs, self%lapse_rate)
 
 !----------------
 case ("GSL")
 !----------------
-! to be implemented
+
+   allocate(llr(nobs))
+
+   llr = (model_t%vals(self%local_lapse_rate_levels,:) - model_t%vals(1,:)) / &
+         (model_geomz%vals(self%local_lapse_rate_levels,:) - model_geomz%vals(1,:))
+
+   model_ts = model_t2m%vals(:)
+
+   call da_int_llr(nobs, missing, cor_tsfc, obs_height, obs_t, model_zs, llr)
 
 !-----------
 case default
@@ -476,7 +484,7 @@ end subroutine da_int_ukmo
 ! -----------------------------------------------------------
 !> \Conduct terrain height correction for sfc temp
 !!
-!! \Method: Lapse Rate (adiabatic by default)
+!! \Method: Constant Lapse Rate (adiabatic by default)
 !!
 !!  Where:
 !!  H_m   = model sfc height
@@ -485,7 +493,48 @@ end subroutine da_int_ukmo
 !!  T_lr  = temperature lapse rate
 !!  T_o2m = obs temp interpolated from station height to model sfc level
 
-subroutine da_int_lr(nobs, missing, cor_tsfc, H_o, T_o, H_m, T_lr)
+subroutine da_int_clr(nobs, missing, cor_tsfc, H_o, T_o, H_m, T_lr)
+implicit none
+integer,                          intent (in)  :: nobs
+real(c_double),                   intent (in)  :: missing
+real(kind_real), dimension(nobs), intent (in)  :: H_o
+real(kind_real), dimension(nobs), intent (in)  :: H_m
+real(kind_real), dimension(nobs), intent (in)  :: T_o
+real(kind_real), intent (in)                   :: T_lr
+real(kind_real), dimension(nobs), intent (out) :: cor_tsfc
+real(kind_real), dimension(nobs)               :: T_o2m
+integer i
+
+! T_o2m : obs temp interpolated to model sfc
+
+! Adjust temp from station height to model sfc based on lapse rate
+! -------------------------------------------------
+where ( H_o /= missing .and. T_o /= missing )
+
+   T_o2m = T_o - T_lr * ( H_m - H_o)
+
+elsewhere
+   !T_o2m = T_m   ! to give zero analysis increment
+   T_o2m = T_o
+end where
+
+   cor_tsfc = T_o2m
+
+end subroutine da_int_clr
+
+! -----------------------------------------------------------
+!> \Conduct terrain height correction for sfc temp
+!!
+!! \Method: Constant Lapse Rate (adiabatic by default)
+!!
+!!  Where:
+!!  H_m   = model sfc height
+!!  H_o   = obs station height
+!!  T_o   = obs temp at station height
+!!  T_lr  = temperature lapse rate
+!!  T_o2m = obs temp interpolated from station height to model sfc level
+
+subroutine da_int_llr(nobs, missing, cor_tsfc, H_o, T_o, H_m, T_lr)
 implicit none
 integer,                          intent (in)  :: nobs
 real(c_double),                   intent (in)  :: missing
@@ -506,12 +555,13 @@ where ( H_o /= missing .and. T_o /= missing )
    T_o2m = T_o - T_lr * ( H_m - H_o)
 
 elsewhere
-   T_o2m = T_m   ! to give zero analysis increment
+   !T_o2m = T_m   ! to give zero analysis increment
+   T_o2m = T_o
 end where
 
    cor_tsfc = T_o2m
 
-end subroutine da_int_lr
+end subroutine da_int_llr
 
 ! ------------------------------------------------------------------------------
 end module ufo_sfccorrected_mod
