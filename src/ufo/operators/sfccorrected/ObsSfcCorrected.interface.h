@@ -50,7 +50,7 @@ extern "C" {
 // -----------------------------------------------------------------------------
 
   void ufo_sfccorrected_setup_f90(F90hop &, const eckit::Configuration &,
-                                   const oops::Variables&operatorVars,
+                                   const oops::ObsVariables&operatorVars,
                                    const int *operatorVarIndices, const int numOperatorVarIndices,
                                    oops::Variables &requiredVars);
   void ufo_sfccorrected_delete_f90(F90hop &);

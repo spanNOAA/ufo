@@ -51,8 +51,8 @@ class(ufo_sfccorrected), intent(inout)     :: self
 type(fckit_configuration), intent(in) :: f_conf
 character(len=:), allocatable         :: str_sfc_scheme, str_var_sfc_geomz, str_var_geomz, str_lapse_rate_option
 character(len=:), allocatable         :: str_obs_height
-real(kind_real), allocatable          :: constant_lapse_rate
-integer, allocatable                  :: local_lapse_rate_level
+real(kind_real)                       :: constant_lapse_rate
+integer                               :: local_lapse_rate_level
 
 character(max_string)                 :: debug_msg
 
@@ -82,16 +82,16 @@ if (self%da_sfc_scheme.eq."GSL") then
    call f_conf%get_or_die("lapse_rate_option", str_lapse_rate_option)
    self%lapse_rate_option = str_lapse_rate_option
    select case (trim(self%lapse_rate_option))
-   case ("CONSTANT")
+   case ("Constant")
       call f_conf%get_or_die("lapse_rate", constant_lapse_rate)
       self%lapse_rate = constant_lapse_rate
-   case ("LOCAL")
+   case ("Local")
       call f_conf%get_or_die("local_lapse_rate_level", local_lapse_rate_level)
       self%local_lapse_rate_level = local_lapse_rate_level
    case default
-      write(err_msg,*) "ufo_sfccorrected: lapse_rate_option not recognized"
-      call fckit_log%debug(err_msg)
-      call abor1_ftn(err_msg)
+      write(debug_msg,*) "ufo_sfccorrected: lapse_rate_option not recognized"
+      call fckit_log%debug(debug_msg)
+      call abor1_ftn(debug_msg)
    end select
 endif
 
@@ -122,7 +122,7 @@ real(kind_real)                   :: wf
 integer                           :: wi
 logical                           :: variable_present, variable_present_t, variable_present_q
 real(kind_real), dimension(:), allocatable :: obs_height, obs_t, obs_q, obs_psfc, obs_lat, obs_tv
-real(kind_real), dimension(:), allocatable :: model_ts, model_zs, model_level1, model_p_2000, model_t_2000, model_psfc, llr
+real(kind_real), dimension(:), allocatable :: model_ts, model_zs, model_level1, model_p_2000, model_t_2000, model_psfc, lr
 real(kind_real), dimension(:), allocatable :: H2000_geop
 real(kind_real), dimension(:), allocatable :: avg_tv
 real(kind_real)                            :: model_znew
@@ -168,7 +168,7 @@ kbot = 1
 do iobs = 1, nlocs
   if (model_geomz%vals(1,iobs) .ne. missing) then
     if (model_geomz%vals(1,iobs) .gt. model_geomz%vals(model_geomz%nval,iobs)) then
-      write(err_msg,'(a)') '  ufo_sfcpcorrected:'//new_line('a')//                   &
+      write(err_msg,'(a)') '  ufo_sfccorrected:'//new_line('a')//                   &
                           '  Model vertical height profile is from top to bottom'
       call fckit_log%debug(err_msg)
       kbot = model_geomz%nval
@@ -324,16 +324,16 @@ case ("UKMO")
 case ("GSL")
 !----------------
 
-   model_ts = model_t2m%vals(:)
+   model_ts = model_t2m%vals(1,:)
 
    allocate(lr(nobs))
 
    if (self%lapse_rate_option.eq."LOCAL") then
 
-      lr = (model_t%vals(self%local_lapse_rate_level,:) - model_t%vals(1,:)) / &
+      lr = -1. * (model_t%vals(self%local_lapse_rate_level,:) - model_t%vals(1,:)) / &
            (model_geomz%vals(self%local_lapse_rate_level,:) - model_geomz%vals(1,:))
 
-   else:
+   else
 
       lr = self%lapse_rate
 
