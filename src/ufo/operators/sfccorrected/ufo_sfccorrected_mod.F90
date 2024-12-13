@@ -9,6 +9,7 @@
 module ufo_sfccorrected_mod
 
  use oops_variables_mod
+ use obs_variables_mod
  use ufo_vars_mod
  use missing_values_mod
  use iso_c_binding
@@ -23,7 +24,7 @@ module ufo_sfccorrected_mod
 ! Fortran derived type for observation type
  type, public :: ufo_sfccorrected
  private
-   type(oops_variables), public :: obsvars ! Variables to be simulated
+   type(obs_variables), public :: obsvars ! Variables to be simulated
    integer, allocatable, public :: obsvarindices(:) ! Indices of obsvars in the list of all
                                                     ! simulated variables in the ObsSpace.
                                                     ! allocated/deallocated at interface layer
@@ -339,7 +340,10 @@ case ("GSL")
 
    endif
 
-   call da_int_lr(nobs, missing, cor_tsfc, obs_height, obs_t, model_zs, lr)
+   ! Convert the unit of the lapse rate from K/km to K/m
+   lr = lr * 0.001
+
+   call da_int_lr(nobs, missing, cor_tsfc, obs_height, obs_t, model_zs, model_ts, lr)
 
 !-----------
 case default
@@ -359,12 +363,12 @@ do iobsvar = 1, size(self%obsvarindices)
 ! cor_tsfc is corrected obs temp at model sfc
 !
    do iobs = 1, nlocs
-     if (cor_tsfc(iobs) /= missing) then
+     !if (cor_tsfc(iobs) /= missing) then
 ! for T_o2m, adjusted hofx - O = model_ts - T_o2m, OBS not adjusted.
-       hofx(ivar,iobs) = model_ts(iobs) + obs_t(iobs) - cor_tsfc(iobs)
-     else
+     !  hofx(ivar,iobs) = model_ts(iobs) + obs_t(iobs) - cor_tsfc(iobs)
+     !else
        hofx(ivar,iobs) = model_ts(iobs)
-     end if
+     !end if
    enddo
 
 enddo
@@ -501,16 +505,17 @@ end subroutine da_int_ukmo
 !!  T_lr  = temperature lapse rate
 !!  T_o2m = obs temp interpolated from station height to model sfc level
 
-subroutine da_int_lr(nobs, missing, cor_tsfc, H_o, T_o, H_m, T_lr)
+subroutine da_int_lr(nobs, missing, cor_tsfc, H_o, T_o, H_m, T_m, T_lr)
 implicit none
 integer,                          intent (in)  :: nobs
 real(c_double),                   intent (in)  :: missing
 real(kind_real), dimension(nobs), intent (in)  :: H_o
 real(kind_real), dimension(nobs), intent (in)  :: H_m
 real(kind_real), dimension(nobs), intent (in)  :: T_o
+real(kind_real), dimension(nobs), intent (in)  :: T_m
 real(kind_real), dimension(nobs), intent (in)  :: T_lr
 real(kind_real), dimension(nobs), intent (out) :: cor_tsfc
-real(kind_real), dimension(nobs)               :: T_o2m
+real(kind_real), dimension(nobs)               :: T_o2m, T_m2o
 integer i
 
 ! T_o2m : obs temp interpolated to model sfc
@@ -520,10 +525,11 @@ integer i
 where ( H_o /= missing .and. T_o /= missing )
 
    T_o2m = T_o - T_lr * ( H_m - H_o)
+   T_m2o = T_m + T_lr * ( H_m - H_o)
 
 elsewhere
-   !T_o2m = T_m   ! to give zero analysis increment
-   T_o2m = T_o
+   T_o2m = T_m
+   T_m2o = T_o
 end where
 
    cor_tsfc = T_o2m
