@@ -34,6 +34,7 @@ module ufo_sfccorrected_mod
    character(len=MAXVARLEN)     :: lapse_rate_option
    real(kind_real)              :: lapse_rate
    integer                      :: local_lapse_rate_level
+   real(kind_real)              :: min_threshold, max_threshold
  contains
    procedure :: setup  => ufo_sfccorrected_setup
    procedure :: simobs => ufo_sfccorrected_simobs
@@ -54,6 +55,7 @@ character(len=:), allocatable         :: str_sfc_scheme, str_var_sfc_geomz, str_
 character(len=:), allocatable         :: str_obs_height
 real(kind_real)                       :: constant_lapse_rate
 integer                               :: local_lapse_rate_level
+real(kind_real)                       :: min_threshold, max_threshold
 
 character(max_string)                 :: debug_msg
 
@@ -85,10 +87,14 @@ if (self%da_sfc_scheme.eq."GSL") then
    select case (trim(self%lapse_rate_option))
    case ("Constant")
       call f_conf%get_or_die("lapse_rate", constant_lapse_rate)
-      self%lapse_rate = constant_lapse_rate
+      self%lapse_rate = constant_lapse_rate * 0.001
    case ("Local")
       call f_conf%get_or_die("local_lapse_rate_level", local_lapse_rate_level)
       self%local_lapse_rate_level = local_lapse_rate_level
+      call f_conf%get_or_die("min_threshold", min_threshold)
+      self%min_threshold = min_threshold * 0.001
+      call f_conf%get_or_die("max_threshold", max_threshold)
+      self%max_threshold = max_threshold * 0.001
    case default
       write(debug_msg,*) "ufo_sfccorrected: lapse_rate_option not recognized"
       call fckit_log%debug(debug_msg)
@@ -114,7 +120,7 @@ type(c_ptr), value, intent(in)    :: obss
 ! Local variables
 real(c_double)                    :: missing
 real(kind_real)                   :: H2000 = 2000.0
-integer                           :: nobs, iobs, ivar, iobsvar, k, kbot, idx_geop
+integer                           :: nobs, iobs, ivar, iobsvar, k, kbot, ktop_lr, idx_geop
 real(kind_real),    allocatable   :: cor_tsfc(:)
 type(ufo_geoval),   pointer       :: model_ps, model_p, model_sfc_geomz, model_t, model_geomz, model_t2m
 character(len=*), parameter       :: myname_="ufo_sfccorrected_simobs"
@@ -127,6 +133,8 @@ real(kind_real), dimension(:), allocatable :: model_ts, model_zs, model_level1, 
 real(kind_real), dimension(:), allocatable :: H2000_geop
 real(kind_real), dimension(:), allocatable :: avg_tv
 real(kind_real)                            :: model_znew
+
+real(kind_real)                            :: avg_lr, avg_temp_high, avg_temp_low, avg_height_high, avg_height_low, n_valid_obs, n_obs_within_thresh
 
 missing = missing_value(missing)
 nobs    = obsspace_get_nlocs(obss)
@@ -329,21 +337,74 @@ case ("GSL")
 
    allocate(lr(nobs))
 
-   if (self%lapse_rate_option.eq."LOCAL") then
+   if (self%lapse_rate_option.eq."Local") then
 
-      lr = -1. * (model_t%vals(self%local_lapse_rate_level,:) - model_t%vals(1,:)) / &
-           (model_geomz%vals(self%local_lapse_rate_level,:) - model_geomz%vals(1,:))
+      if (kbot == 1) then
+         ktop_lr = self%local_lapse_rate_level
+      else
+         ktop_lr = kbot - self%local_lapse_rate_level + 1
+      end if
+
+      ! Local lapse rate in K/m
+      lr = -1. * (model_t%vals(ktop_lr,:) - model_t%vals(kbot,:)) / &
+           (model_geomz%vals(ktop_lr,:) - model_geomz%vals(kbot,:))
+
+      lr = min(self%max_threshold, max(self%min_threshold, lr))
+
+      n_valid_obs = 0.
+      n_obs_within_thresh = 0.
+      avg_lr = 0.
+      avg_temp_high = 0.
+      avg_temp_low = 0.
+      avg_height_high = 0.
+      avg_height_low = 0.
+      do iobs=1, nobs
+         if (model_ts(iobs) > 0) then
+            n_valid_obs = n_valid_obs + 1
+            avg_lr = avg_lr + lr(iobs)
+            avg_temp_high = avg_temp_high + model_t%vals(ktop_lr,iobs)
+            avg_temp_low = avg_temp_low + model_t%vals(kbot,iobs)
+            avg_height_high = avg_height_high + model_geomz%vals(ktop_lr,iobs)
+            avg_height_low = avg_height_low + model_geomz%vals(kbot,iobs)
+            if (lr(iobs) > 0.0005 .and. lr(iobs) < 0.0100) then
+              n_obs_within_thresh = n_obs_within_thresh + 1
+            end if
+         end if
+      end do
+      avg_lr = avg_lr * 1000. / n_valid_obs
+      avg_temp_high = avg_temp_high / n_valid_obs
+      avg_temp_low = avg_temp_low / n_valid_obs
+      avg_height_high = avg_height_high / n_valid_obs
+      avg_height_low = avg_height_low / n_valid_obs
+
+      write(err_msg, '(2a, 5(a,f8.3),a)') &
+           "Lapse rate option: ", trim(self%lapse_rate_option), &
+           ", average Local Lapse Rate: ", avg_lr, &
+           " K/km, average temperature (higher level): ", avg_temp_high, &
+           " K, average temperature (lower level): ", avg_temp_low, &
+           " K, average AMSL (higher level): ", avg_height_high, &
+           " m, average AMSL (lower level): ", avg_height_low, " m."
+      call fckit_log%info(err_msg)
+      write(err_msg, '(3(a, f5.0))') &
+           "Number of METAR observations: ", n_valid_obs, &
+           ", number of observations within the thresholds: ", n_obs_within_thresh, &
+           ", number of observations outside the thresholds: ", n_valid_obs-n_obs_within_thresh
+      call fckit_log%info(err_msg)
 
    else
 
+      ! Local lapse rate in K/m
       lr = self%lapse_rate
+      avg_lr = self%lapse_rate * 1000.
+
+      write(err_msg, '(3a, f8.3, a)') &
+           "Lapse rate option: ", trim(self%lapse_rate_option), &
+           "Constant Lapse Rate: ", avg_lr, " K/km"
+      call fckit_log%info(err_msg)
 
    endif
 
-   ! Convert the unit of the lapse rate from K/km to K/m
-   lr = lr * 0.001
-
-   call da_int_lr(nobs, missing, cor_tsfc, obs_height, obs_t, model_zs, model_ts, lr)
+   call da_int_lr(nobs, missing, cor_tsfc, obs_height, obs_t, model_zs, lr)
 
 !-----------
 case default
@@ -363,12 +424,12 @@ do iobsvar = 1, size(self%obsvarindices)
 ! cor_tsfc is corrected obs temp at model sfc
 !
    do iobs = 1, nlocs
-     !if (cor_tsfc(iobs) /= missing) then
-! for T_o2m, adjusted hofx - O = model_ts - T_o2m, OBS not adjusted.
-     !  hofx(ivar,iobs) = model_ts(iobs) + obs_t(iobs) - cor_tsfc(iobs)
-     !else
-       hofx(ivar,iobs) = model_ts(iobs)
-     !end if
+      if (cor_tsfc(iobs) /= missing) then
+      ! for T_o2m, adjusted hofx - O = model_ts - T_o2m, OBS not adjusted.
+         hofx(ivar,iobs) = model_ts(iobs) + obs_t(iobs) - cor_tsfc(iobs)
+      else
+         hofx(ivar,iobs) = model_ts(iobs)
+      end if
    enddo
 
 enddo
@@ -505,14 +566,13 @@ end subroutine da_int_ukmo
 !!  T_lr  = temperature lapse rate
 !!  T_o2m = obs temp interpolated from station height to model sfc level
 
-subroutine da_int_lr(nobs, missing, cor_tsfc, H_o, T_o, H_m, T_m, T_lr)
+subroutine da_int_lr(nobs, missing, cor_tsfc, H_o, T_o, H_m, T_lr)
 implicit none
 integer,                          intent (in)  :: nobs
 real(c_double),                   intent (in)  :: missing
 real(kind_real), dimension(nobs), intent (in)  :: H_o
 real(kind_real), dimension(nobs), intent (in)  :: H_m
 real(kind_real), dimension(nobs), intent (in)  :: T_o
-real(kind_real), dimension(nobs), intent (in)  :: T_m
 real(kind_real), dimension(nobs), intent (in)  :: T_lr
 real(kind_real), dimension(nobs), intent (out) :: cor_tsfc
 real(kind_real), dimension(nobs)               :: T_o2m, T_m2o
@@ -525,11 +585,9 @@ integer i
 where ( H_o /= missing .and. T_o /= missing )
 
    T_o2m = T_o - T_lr * ( H_m - H_o)
-   T_m2o = T_m + T_lr * ( H_m - H_o)
 
 elsewhere
-   T_o2m = T_m
-   T_m2o = T_o
+   T_o2m = T_o
 end where
 
    cor_tsfc = T_o2m

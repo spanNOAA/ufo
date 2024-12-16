@@ -88,7 +88,7 @@ class ObsSfcCorrectedParameters : public ObsOperatorParametersBase {
   /// Note: Only relevant if \c SfcCorrectionType is set to GSL and \c LapseRateOption is set to "Constant", "lapse_rate" default value is adiabatic lapse rate 9.8 K/km
   oops::Parameter<float> LapseRateValue
     {"lapse_rate", 
-     "The lapse rate used to adjust the observed surface temperature to "
+     "The lapse rate (K/km) used to adjust the observed surface temperature to "
      "the model's surface level. Used if lapse rate option is set to constant, "
      "otherwise ignored.",
      9.8, 
@@ -101,6 +101,24 @@ class ObsSfcCorrectedParameters : public ObsOperatorParametersBase {
      "which adjusts the observed surface temperature to the model's surface level. "
      "Used if lapse rate option is set to local, otherwise ignored.",
      5,
+     this};
+
+  /// Note: Only relevant if \c SfcCorrectionType is set to GSL and and \c LapseRateOption is set to "Local"
+  oops::Parameter<float> MinThreshold
+    {"min_threshold",
+     "The minimum lapse rate (K/km) can be applied to adjust the "
+     "observed surface temperature to the model's surface level. "
+     "Used if lapse rate option is set to local, otherwise ignored.",
+     0.5,
+     this};
+
+  /// Note: Only relevant if \c SfcCorrectionType is set to GSL and and \c LapseRateOption is set to "Local"
+  oops::Parameter<float> MaxThreshold
+    {"max_threshold",
+     "The maximum lapse rate (K/km) can be applied to adjust the "
+     "observed surface temperature to the model's surface level. "
+     "Used if lapse rate option is set to local, otherwise ignored.",
+     10.0,
      this};
 };
 
