@@ -34,6 +34,7 @@ module ufo_sfccorrected_mod
    character(len=MAXVARLEN)     :: lapse_rate_option
    real(kind_real)              :: lapse_rate
    integer                      :: local_lapse_rate_level
+   logical                      :: threshold
    real(kind_real)              :: min_threshold, max_threshold
  contains
    procedure :: setup  => ufo_sfccorrected_setup
@@ -55,6 +56,7 @@ character(len=:), allocatable         :: str_sfc_scheme, str_var_sfc_geomz, str_
 character(len=:), allocatable         :: str_obs_height
 real(kind_real)                       :: constant_lapse_rate
 integer                               :: local_lapse_rate_level
+logical                               :: threshold
 real(kind_real)                       :: min_threshold, max_threshold
 
 character(max_string)                 :: debug_msg
@@ -91,10 +93,16 @@ if (self%da_sfc_scheme.eq."GSL") then
    case ("Local")
       call f_conf%get_or_die("local_lapse_rate_level", local_lapse_rate_level)
       self%local_lapse_rate_level = local_lapse_rate_level
-      call f_conf%get_or_die("min_threshold", min_threshold)
-      self%min_threshold = min_threshold * 0.001
-      call f_conf%get_or_die("max_threshold", max_threshold)
-      self%max_threshold = max_threshold * 0.001
+      call f_conf%get_or_die("threshold", threshold)
+      self%threshold = threshold
+      if (self%threshold) then
+         call f_conf%get_or_die("min_threshold", min_threshold)
+         self%min_threshold = min_threshold * 0.001
+         call f_conf%get_or_die("max_threshold", max_threshold)
+         self%max_threshold = max_threshold * 0.001
+      end if
+   case ("NoAdjustment")
+      ! Do nothing in this case
    case default
       write(debug_msg,*) "ufo_sfccorrected: lapse_rate_option not recognized"
       call fckit_log%debug(debug_msg)
@@ -349,7 +357,9 @@ case ("GSL")
       lr = -1. * (model_t%vals(ktop_lr,:) - model_t%vals(kbot,:)) / &
            (model_geomz%vals(ktop_lr,:) - model_geomz%vals(kbot,:))
 
-      lr = min(self%max_threshold, max(self%min_threshold, lr))
+      if (self%threshold) then
+         lr = min(self%max_threshold, max(self%min_threshold, lr))
+      end if
 
       n_valid_obs = 0.
       n_obs_within_thresh = 0.
@@ -384,14 +394,14 @@ case ("GSL")
            " K, average temperature (lower level): ", avg_temp_low, &
            " K, average AMSL (higher level): ", avg_height_high, &
            " m, average AMSL (lower level): ", avg_height_low, " m."
-      call fckit_log%info(err_msg)
+      call fckit_log%debug(err_msg)
       write(err_msg, '(3(a, f5.0))') &
            "Number of METAR observations: ", n_valid_obs, &
            ", number of observations within the thresholds: ", n_obs_within_thresh, &
            ", number of observations outside the thresholds: ", n_valid_obs-n_obs_within_thresh
-      call fckit_log%info(err_msg)
+      call fckit_log%debug(err_msg)
 
-   else
+   else if (self%lapse_rate_option.eq."Constant") then
 
       ! Local lapse rate in K/m
       lr = self%lapse_rate
@@ -400,11 +410,21 @@ case ("GSL")
       write(err_msg, '(3a, f8.3, a)') &
            "Lapse rate option: ", trim(self%lapse_rate_option), &
            "Constant Lapse Rate: ", avg_lr, " K/km"
-      call fckit_log%info(err_msg)
+      call fckit_log%debug(err_msg)
+
+   else
+
+      write(err_msg, '(a)') &
+           "No terrain adjustment applied to temperature observations."
+      call fckit_log%debug(err_msg)
 
    endif
 
-   call da_int_lr(nobs, missing, cor_tsfc, obs_height, obs_t, model_zs, lr)
+   if (self%lapse_rate_option.eq."NoAdjustment") then
+      cor_tsfc = obs_t
+   else
+      call da_int_lr(nobs, missing, cor_tsfc, obs_height, obs_t, model_zs, lr)
+   end if
 
 !-----------
 case default
@@ -424,12 +444,12 @@ do iobsvar = 1, size(self%obsvarindices)
 ! cor_tsfc is corrected obs temp at model sfc
 !
    do iobs = 1, nlocs
-      if (cor_tsfc(iobs) /= missing) then
-      ! for T_o2m, adjusted hofx - O = model_ts - T_o2m, OBS not adjusted.
-         hofx(ivar,iobs) = model_ts(iobs) + obs_t(iobs) - cor_tsfc(iobs)
-      else
-         hofx(ivar,iobs) = model_ts(iobs)
-      end if
+     if (cor_tsfc(iobs) /= missing) then
+! for T_o2m, adjusted hofx - O = model_ts - T_o2m, OBS not adjusted.
+       hofx(ivar,iobs) = model_ts(iobs) + obs_t(iobs) - cor_tsfc(iobs)
+     else
+       hofx(ivar,iobs) = model_ts(iobs)
+     end if
    enddo
 
 enddo

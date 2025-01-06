@@ -83,7 +83,7 @@ class ObsSfcCorrectedParameters : public ObsOperatorParametersBase {
   oops::Parameter<std::string> ObsHeightName{"station_altitude", "stationElevation", this};
   
   /// Note: Only relevant if \c SfcCorrectionType is set to GSL, "lapse_rate_option" default value is "Local"
-  oops::Parameter<std::string> LapseRateOption{"lapse_rate_option", "Lapse rate option for surface temperature correction (Constant or Local)", "Local", this};
+  oops::Parameter<std::string> LapseRateOption{"lapse_rate_option", "Lapse rate option for surface temperature correction (Constant, Local or NoAdjustment)", "Local", this};
 
   /// Note: Only relevant if \c SfcCorrectionType is set to GSL and \c LapseRateOption is set to "Constant", "lapse_rate" default value is adiabatic lapse rate 9.8 K/km
   oops::Parameter<float> LapseRateValue
@@ -94,7 +94,7 @@ class ObsSfcCorrectedParameters : public ObsOperatorParametersBase {
      9.8, 
      this};
 
-  /// Note: Only relevant if \c SfcCorrectionType is set to GSL and and \c LapseRateOption is set to "Local"
+  /// Note: Only relevant if \c SfcCorrectionType is set to GSL and \c LapseRateOption is set to "Local"
   oops::Parameter<int> LocalLapseRateLevel
     {"local_lapse_rate_level",
      "The highest model level used to calculate the local lapse rate, "
@@ -103,7 +103,11 @@ class ObsSfcCorrectedParameters : public ObsOperatorParametersBase {
      5,
      this};
 
-  /// Note: Only relevant if \c SfcCorrectionType is set to GSL and and \c LapseRateOption is set to "Local"
+  /// Should the local lapse rate be restricted to a specific range
+  /// Note: Only relevant if \c SfcCorrectionType is set to GSL and \c LapseRateOption is set to "Local"
+  oops::Parameter<bool> Threshold{"threshold", true, this};
+
+  /// Note: Only relevant if \c SfcCorrectionType is set to GSL, \c LapseRateOption is set to "Local", and \c Threshold is set to true
   oops::Parameter<float> MinThreshold
     {"min_threshold",
      "The minimum lapse rate (K/km) can be applied to adjust the "
@@ -112,7 +116,7 @@ class ObsSfcCorrectedParameters : public ObsOperatorParametersBase {
      0.5,
      this};
 
-  /// Note: Only relevant if \c SfcCorrectionType is set to GSL and and \c LapseRateOption is set to "Local"
+  /// Note: Only relevant if \c SfcCorrectionType is set to GSL, \c LapseRateOption is set to "Local", and \c Threshold is set to true
   oops::Parameter<float> MaxThreshold
     {"max_threshold",
      "The maximum lapse rate (K/km) can be applied to adjust the "
