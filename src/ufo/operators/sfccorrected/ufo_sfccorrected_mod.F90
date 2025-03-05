@@ -16,6 +16,7 @@ module ufo_sfccorrected_mod
  use kinds
  use ufo_constants_mod, only : grav, rd, Lclr, t2tv
  use gnssro_mod_transform, only : geop2geometric, geometric2geop
+ use mpi
 
  implicit none
  private
@@ -136,13 +137,14 @@ character(max_string)             :: err_msg
 real(kind_real)                   :: wf
 integer                           :: wi
 logical                           :: variable_present, variable_present_t, variable_present_q
-real(kind_real), dimension(:), allocatable :: obs_height, obs_t, obs_q, obs_psfc, obs_lat, obs_tv
+real(kind_real), dimension(:), allocatable :: obs_height, obs_t, obs_q, obs_psfc, obs_lat, obs_lon, obs_tv
 real(kind_real), dimension(:), allocatable :: model_ts, model_zs, model_level1, model_p_2000, model_t_2000, model_psfc, lr
 real(kind_real), dimension(:), allocatable :: H2000_geop
 real(kind_real), dimension(:), allocatable :: avg_tv
 real(kind_real)                            :: model_znew
 
-real(kind_real)                            :: avg_lr, avg_temp_high, avg_temp_low, avg_height_high, avg_height_low, n_valid_obs, n_obs_within_thresh
+integer :: rank, ierr, unit_lr
+character(len=30) :: filename
 
 missing = missing_value(missing)
 nobs    = obsspace_get_nlocs(obss)
@@ -197,6 +199,28 @@ enddo
 allocate(model_zs(nobs))
 allocate(model_level1(nobs))
 allocate(model_psfc(nobs))
+
+! Sijie Pan, read lat and lon
+if (.not. allocated(obs_lat)) then
+   variable_present = obsspace_has(obss, "MetaData", "latitude")
+   if (variable_present) then
+      call fckit_log%debug(' allocating obs_lat array')
+      allocate(obs_lat(nobs))
+      call obsspace_get_db(obss, "MetaData", "latitude", obs_lat)
+   else
+      call abor1_ftn('Variable latitude@MetaData does not exist, aborting')
+   endif
+endif
+if (.not. allocated(obs_lon)) then
+   variable_present = obsspace_has(obss, "MetaData", "longitude")
+   if (variable_present) then
+      call fckit_log%debug(' allocating obs_lon array')
+      allocate(obs_lon(nobs))
+      call obsspace_get_db(obss, "MetaData", "longitude", obs_lon)
+   else
+      call abor1_ftn('Variable longitude@MetaData does not exist, aborting')
+   endif
+endif
 
 ! If needed, we can convert geopotential heights to geometric altitude
 ! for full model vertical column using gnssro_mod_transform. We need
@@ -271,7 +295,7 @@ if (idx_geop.gt.0) then
    enddo
 endif
 
-if (allocated(obs_lat)) deallocate(obs_lat)
+!if (allocated(obs_lat)) deallocate(obs_lat)
 
 model_psfc = model_ps%vals(1,:)
 
@@ -357,60 +381,30 @@ case ("GSL")
       lr = -1. * (model_t%vals(ktop_lr,:) - model_t%vals(kbot,:)) / &
            (model_geomz%vals(ktop_lr,:) - model_geomz%vals(kbot,:))
 
+      call MPI_COMM_RANK(MPI_COMM_WORLD, rank, ierr)
+      write(filename, '(a, i4.4, a)') "local_lapse_rate_", rank, ".txt"
+      unit_lr = 100+rank
+      open(unit=unit_lr, file=filename, status='unknown')
+      do iobs = 1, nobs
+        if (model_p%vals(kbot,iobs) > 0 .and. model_p%vals(ktop_lr,iobs) > 0) then
+          write(unit_lr, '(i5, 9(f10.3))') &
+                iobs, obs_lat(iobs), obs_lon(iobs), model_p%vals(kbot,iobs)/100.0, &
+                model_p%vals(ktop_lr,iobs)/100.0, model_geomz%vals(ktop_lr,iobs), &
+                model_geomz%vals(kbot,iobs), &
+                (model_p%vals(kbot,iobs) - model_p%vals(ktop_lr,iobs)) / 100.0, &
+                model_geomz%vals(ktop_lr,iobs) - model_geomz%vals(kbot,iobs), &
+                lr(iobs) * 1000.0
+        end if
+      end do
+
       if (self%threshold) then
          lr = min(self%max_threshold, max(self%min_threshold, lr))
       end if
-
-      n_valid_obs = 0.
-      n_obs_within_thresh = 0.
-      avg_lr = 0.
-      avg_temp_high = 0.
-      avg_temp_low = 0.
-      avg_height_high = 0.
-      avg_height_low = 0.
-      do iobs=1, nobs
-         if (model_ts(iobs) > 0) then
-            n_valid_obs = n_valid_obs + 1
-            avg_lr = avg_lr + lr(iobs)
-            avg_temp_high = avg_temp_high + model_t%vals(ktop_lr,iobs)
-            avg_temp_low = avg_temp_low + model_t%vals(kbot,iobs)
-            avg_height_high = avg_height_high + model_geomz%vals(ktop_lr,iobs)
-            avg_height_low = avg_height_low + model_geomz%vals(kbot,iobs)
-            if (lr(iobs) > 0.0005 .and. lr(iobs) < 0.0100) then
-              n_obs_within_thresh = n_obs_within_thresh + 1
-            end if
-         end if
-      end do
-      avg_lr = avg_lr * 1000. / n_valid_obs
-      avg_temp_high = avg_temp_high / n_valid_obs
-      avg_temp_low = avg_temp_low / n_valid_obs
-      avg_height_high = avg_height_high / n_valid_obs
-      avg_height_low = avg_height_low / n_valid_obs
-
-      write(err_msg, '(2a, 5(a,f8.3),a)') &
-           "Lapse rate option: ", trim(self%lapse_rate_option), &
-           ", average Local Lapse Rate: ", avg_lr, &
-           " K/km, average temperature (higher level): ", avg_temp_high, &
-           " K, average temperature (lower level): ", avg_temp_low, &
-           " K, average AMSL (higher level): ", avg_height_high, &
-           " m, average AMSL (lower level): ", avg_height_low, " m."
-      call fckit_log%debug(err_msg)
-      write(err_msg, '(3(a, f5.0))') &
-           "Number of METAR observations: ", n_valid_obs, &
-           ", number of observations within the thresholds: ", n_obs_within_thresh, &
-           ", number of observations outside the thresholds: ", n_valid_obs-n_obs_within_thresh
-      call fckit_log%debug(err_msg)
 
    else if (self%lapse_rate_option.eq."Constant") then
 
       ! Local lapse rate in K/m
       lr = self%lapse_rate
-      avg_lr = self%lapse_rate * 1000.
-
-      write(err_msg, '(3a, f8.3, a)') &
-           "Lapse rate option: ", trim(self%lapse_rate_option), &
-           "Constant Lapse Rate: ", avg_lr, " K/km"
-      call fckit_log%debug(err_msg)
 
    else
 
@@ -455,6 +449,8 @@ do iobsvar = 1, size(self%obsvarindices)
 enddo
 
 deallocate(obs_height)
+if (allocated(obs_lat)) deallocate(obs_lat)
+if (allocated(obs_lon)) deallocate(obs_lon)
 if (variable_present_t) deallocate(obs_t)
 if (variable_present_q) deallocate(obs_q)
 
